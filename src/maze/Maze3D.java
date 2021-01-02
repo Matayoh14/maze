@@ -13,10 +13,13 @@ import com.jogamp.opengl.GLProfile;
 import com.jogamp.opengl.awt.GLCanvas;
 import com.jogamp.opengl.glu.GLU;
 import com.jogamp.opengl.util.FPSAnimator;
+import com.jogamp.opengl.util.awt.TextRenderer;
 import com.jogamp.opengl.util.texture.Texture;
 import com.jogamp.opengl.util.texture.TextureData;
 import com.jogamp.opengl.util.texture.TextureIO;
 import java.awt.BorderLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
 import java.awt.Point;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
@@ -27,9 +30,14 @@ import java.io.InputStream;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import maze.Maze.Navigate;
 import maze.Maze.Walls;
 
 //
@@ -70,7 +78,18 @@ public class Maze3D implements GLEventListener {
     private Maze maze;             // The maze 
     private FPSAnimator animator;  // The animator
 
+    private TextRenderer renderer;
+
+    Map<Navigate, String> map = Stream.of(new Object[][]{
+        {Navigate.Left, "Turn Left"},
+        {Navigate.Right, "Turn Right"},
+        {Navigate.AboutFace, "Turn Left (twice)"},
+        {Navigate.Forward, "Go Forward"},
+        {Navigate.Reached, "You are at the exit"},
+        {Navigate.Lost, "Sorry, I'm Lost"},}).collect(Collectors.toMap(p -> (Navigate) p[0], p -> (String) p[1]));
+
     private boolean solution = false;
+    private boolean solution_as_text = false;
     static private boolean displayed = false;
 
     final static int SEGMENTS = 5;  // Number of segemnts to draw a curved maze wll 
@@ -166,7 +185,31 @@ public class Maze3D implements GLEventListener {
         }
 
         gl.glEnd(); // Done Drawing The Quads, output it
+
+        // Draw rthw solution as text if required
+        if (solution && solution_as_text) {
+            DrawTextSolution(drawable);
+        }
+
         gl.glFlush();
+    }
+
+    // Display the next solution point as text
+    //
+    public void DrawTextSolution(GLAutoDrawable drawable) {
+        renderer.beginRendering(drawable.getSurfaceWidth(), drawable.getSurfaceHeight());
+
+        String text;
+        if (bOrtho) {
+            text = "You have exited the maze";
+        } else {
+            text = map.get(maze.GetNextSolutionPoint(direction));
+        }
+
+        renderer.setColor(0.2f, 0.2f, 1.0f, 0.8f);
+        renderer.draw(text, 0, 0);
+
+        renderer.endRendering();
     }
 
     // Function to draw the rectangular maze
@@ -245,7 +288,7 @@ public class Maze3D implements GLEventListener {
         }
 
         // If the user wants the solution ("Show me the way to go home" is checked
-        if (solution) {
+        if (solution && !solution_as_text) {
             // Get the solution iterator
             Iterator<Point> iter = maze.iterator3D();
             if (!iter.hasNext()) {
@@ -391,7 +434,7 @@ public class Maze3D implements GLEventListener {
         }
 
         // If the user wants a solution line ("Show me the way to go home" is checked)
-        if (solution) {
+        if (solution && !solution_as_text) {
             // get the solution iterator
             Iterator<Point> iter = maze.iterator3D();
             if (!iter.hasNext()) {
@@ -534,6 +577,8 @@ public class Maze3D implements GLEventListener {
 
         direction = Walls.North;
         maze.setPos(maze.getEntrancePos(), maze.getHeight());
+
+        renderer = new TextRenderer(new Font("SansSerif", Font.BOLD, 36));
     }
 
     //  Set the new view details if window is resized
@@ -748,7 +793,7 @@ public class Maze3D implements GLEventListener {
         // Set the new turn angle
         target = -90.0f;
         turn_inc = target / move_frames;
-        
+
         // calculate the new view position as it is on the back line of the cell
         //  ao changing the direction changes the view position
         if (maze.isCircular()) {
@@ -784,7 +829,7 @@ public class Maze3D implements GLEventListener {
             movex = targetx / move_frames;
             movez = targetz / move_frames;
             direction = direction.TurnLeft();
-            
+
             // Start the animation
             animator.start();
         }
@@ -801,7 +846,7 @@ public class Maze3D implements GLEventListener {
         // Set the new turn angle
         target = 90.0f;
         turn_inc = target / move_frames;
-        
+
         // calculate the new view position as it is on the back line of the cell
         //  ao changing the direction changes the view position
         if (maze.isCircular()) {
@@ -837,7 +882,7 @@ public class Maze3D implements GLEventListener {
             movex = targetx / move_frames;
             movez = targetz / move_frames;
             direction = direction.TurnRight();
-            
+
             // Start the animation
             animator.start();
         }
@@ -901,7 +946,7 @@ public class Maze3D implements GLEventListener {
 
         // The canvas
         final GLCanvas glcanvas = new GLCanvas(capabilities);
-        
+
         // The frame to hold the canvas
         Maze3D MazeRenderer = new Maze3D();
 
@@ -918,27 +963,46 @@ public class Maze3D implements GLEventListener {
         final mainFrame frame = new mainFrame("3D Maze traversal", MazeRenderer);
         frame.getContentPane().add(glcanvas);
 
-        // Add a check box
+        // Add the check box panel
+        JPanel checks = new JPanel();
+        checks.setLayout(new GridLayout(1, 2));
+
+        // Add the show solution check box
         JCheckBox show_solution = new JCheckBox("Show me the way to go home");
-        frame.getContentPane().add(show_solution, BorderLayout.PAGE_END);
+        checks.add(show_solution, BorderLayout.PAGE_END);
         show_solution.addActionListener((ActionEvent evt) -> {
             // When the checkbox is changed
             MazeRenderer.solution = show_solution.isSelected();
             // re-display the maze with/without the solution line
             glcanvas.display();
-            
+
             // Give the focus back to the frame
             frame.requestFocus();
         });
 
+        JCheckBox as_text = new JCheckBox("Solution as text");
+        checks.add(as_text);
+        as_text.addActionListener((ActionEvent evt) -> {
+            // When the checkbox is changed
+            MazeRenderer.solution_as_text = as_text.isSelected();
+            // re-display the maze with/without the solution line
+            glcanvas.display();
+
+            // Give the focus back to the frame
+            frame.requestFocus();
+        });
+
+        // Add the check boxes to the panelbottom of the frame
+        frame.getContentPane().add(checks, BorderLayout.PAGE_END);
+
         // Set the "X" button action to delete the view (default is to hide it)
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        
+
         // Display the Window
         frame.setSize(frame.getContentPane().getPreferredSize());
         frame.setVisible(true);
         frame.setLocationRelativeTo(null);
-        
+
         // Create an animator
         MazeRenderer.animator = new FPSAnimator(glcanvas, 300, true);
     }

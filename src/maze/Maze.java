@@ -43,6 +43,15 @@ public class Maze implements Iterable<Point> {
         return (solution3D.iterator());
     }
 
+    public enum Navigate {
+        Forward,
+        Left,
+        Right,
+        AboutFace,
+        Reached,
+        Lost
+    };
+
     // definition of a maze square, defining the walls  around the square
     public enum Walls {
         North,
@@ -71,6 +80,10 @@ public class Maze implements Iterable<Point> {
 
             return values()[(ordinal() + (ordinal() % 2) * 2) % 4];
         }
+
+        public int TurnTo(Walls target) {
+            return (((ordinal() - target.ordinal()) + 4) % 4);
+        }
     };
 
     // Return whether a maze has been created
@@ -98,7 +111,7 @@ public class Maze implements Iterable<Point> {
         } else if (mazemap[xpos][ypos].contains(wall)) { // bashed into a wall
             return (false);
         }
-        
+
         // Determine direction, and change position
         switch (wall) {
             case North:
@@ -114,11 +127,11 @@ public class Maze implements Iterable<Point> {
                 xpos = (xpos + width - 1) % width;
                 break;
         }
-        
+
         // Remove the point from the solution, if the player moved onto the 
         //  correct point (closer to the exit) or add the point of the player
         //  went the wrong way (away from the exit)
-        if (solution3D.isEmpty()){
+        if (solution3D.isEmpty()) {
             solution3D.add(new Point(prevx, prevy));
         }
         Point end = solution3D.get(solution3D.size() - 1);
@@ -195,6 +208,60 @@ public class Maze implements Iterable<Point> {
         }
 
         return (count);
+    }
+
+    // Work out the direction you must go to face the next solution point
+    //  (i.e. the way out of the maze)
+    public Navigate GetNextSolutionPoint(Walls direction) {
+        if (AtStart()) {
+            return Navigate.Forward;
+        } else if (solution3D.isEmpty()) {
+            return Navigate.Reached;
+        }
+        Point end = solution3D.get(solution3D.size() - 1);
+
+        int xdiff = end.x - xpos;
+        int ydiff = end.y - ypos;
+
+        Walls target = Walls.East;
+
+        if (xdiff != 0) {
+            if (xdiff == 1 || xdiff < -1) {
+                target = Walls.East;
+
+            } else {
+                target = Walls.West;
+            }
+
+        } else if (ydiff != 0) {
+            if (ydiff == 1 || ydiff < -1) {
+                target = Walls.South;
+
+            } else {
+                target = Walls.North;
+            }
+
+        }
+
+        // If circular direction are inverted bcause the maze is drawn
+        //  anti-clockwise, but OpenGL angles are clockwise.
+        if (isCircular()) {
+            // direction = direction.InverseLR();
+            target = target.InverseLR();
+        }
+
+        switch (direction.TurnTo(target)) {
+            case 0:
+                return Navigate.Forward;
+            case 1:
+                return Navigate.Left;
+            case 2:
+                return Navigate.AboutFace;
+            case 3:
+                return Navigate.Right;
+            default:
+                return Navigate.Lost;
+        }
     }
 
     // When creating the maze get the nth available direction
@@ -284,7 +351,7 @@ public class Maze implements Iterable<Point> {
             mazemap[x1][y1].remove(Opposing);
             mazemap[x1][y1].remove(Walls.Available);
         }
-        
+
         // return the point we have just open up by breaking down the wall
         return (new Point(x1, y1));
     }
@@ -444,9 +511,9 @@ public class Maze implements Iterable<Point> {
         Process(x, y);
         bMapCreated = true;
     }
-    
+
     // reset the 3d solution line, when we are at the entrance of the maze
-    public void ResetSolution(){
+    public void ResetSolution() {
         solution3D = (ArrayList<Point>) solution.clone();
     }
 
